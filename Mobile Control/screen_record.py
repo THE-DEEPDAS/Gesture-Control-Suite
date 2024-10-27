@@ -3,6 +3,7 @@ import numpy as np
 import time
 import os
 import mediapipe as mp
+from mss import mss  # To capture the screen directly
 
 # Initialize MediaPipe for hand detection
 mp_hands = mp.solutions.hands
@@ -15,32 +16,31 @@ def detect_thumbs_up(landmarks):
     return thumb_tip.y < index_mcp.y
 
 def detect_fist(landmarks):
-    return all(landmarks[mp_hands.HandLandmark.THUMB_TIP].y > landmarks[mp_hands.HandLandmark.THUMB_MCP].y for _ in landmarks)
+    thumb_tip = landmarks[mp_hands.HandLandmark.THUMB_TIP]
+    thumb_mcp = landmarks[mp_hands.HandLandmark.THUMB_MCP]
+    return all(thumb_tip.y > thumb_mcp.y and 
+               landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].y > landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].y)
 
 def record_screen(output_folder="CapturedVideos"):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    screen_size = (1920, 1080)  # Change to your screen resolution
+    screen_size = (1920, 1080)  # Set to your screen resolution
     file_name = os.path.join(output_folder, f"recording_{int(time.time())}.avi")
     fourcc = cv2.VideoWriter_fourcc(*"XVID")
     out = cv2.VideoWriter(file_name, fourcc, 20.0, screen_size)
 
     print("Recording started. Show fist to stop recording.")
-    
+    sct = mss()
+
     while True:
-        # Capture the screen using OpenCV
-        img = cv2.VideoCapture(0)  # This will capture from your default camera
-        ret, frame = img.read()
-        
-        if not ret:
-            print("Failed to capture frame.")
-            break
-
+        screenshot = sct.grab(sct.monitors[1])  # Capture the primary monitor
+        img = np.array(screenshot)
+        frame = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
         out.write(frame)
-        cv2.imshow("Recording the video here ...", frame)
+        cv2.imshow("Recording Screen...", frame)
 
-        # Check for 'q' to stop early if needed
+        # Stop recording when 'q' is pressed
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
@@ -65,8 +65,8 @@ def handle_recording(frame):
                 return False  # Indicate recording stopped
     return True  # Continue recording if neither gesture is detected
 
-
-cap = cv2.VideoCapture(0)  # Start video capture from the webcam
+# Start video capture from the webcam for gesture detection
+cap = cv2.VideoCapture(0)
 
 while True:
     ret, frame = cap.read()
@@ -77,7 +77,7 @@ while True:
     if not handle_recording(frame):
         break
 
-    cv2.imshow("Gestures to be inputted here.", frame)
+    cv2.imshow("Gestures for Control", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break

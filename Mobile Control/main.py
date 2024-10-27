@@ -14,6 +14,7 @@ import os
 from screenshot_capture import take_screenshot
 from photo_timer import PhotoTimer
 from screen_record import handle_recording
+from text_extractor import TextExtractor
 
 # Define output folder for captured images and videos
 output_folder = "CapturedImages"
@@ -29,6 +30,9 @@ cap = cv2.VideoCapture(0)
 # Initialize the PhotoTimer class to handle photo capturing
 photo_timer = PhotoTimer(output_folder=output_folder)
 is_recording = False  # Flag to track recording state
+
+# Initialize TextExtractor for live text extraction
+extractor = TextExtractor()
 
 while cap.isOpened():
     success, frame = cap.read()
@@ -54,13 +58,18 @@ while cap.isOpened():
 
     # Update the PhotoTimer to manage photo countdown and capture
     if not photo_timer.update_frame(frame):
-        # Check if the timer completed and a photo was captured
         print("Photo captured.")
+
+    # Extract text from the current frame
+    extractor.extract_text_from_frame(frame)
 
     # Display the frame with all overlays
     cv2.imshow("Gesture Camera Control", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break  # Exit on 'q'
+
+# Save extracted texts when exiting
+extractor.save_extracted_text()
 
 # Release resources and close OpenCV windows
 cap.release()
