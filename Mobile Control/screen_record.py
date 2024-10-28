@@ -37,17 +37,28 @@ def record_screen(file_name):
 # Gesture detection functions
 def detect_thumbs_up(landmarks):
     thumb_tip = landmarks[mp_hands.HandLandmark.THUMB_TIP]
-    index_mcp = landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP]
-    return thumb_tip.y < index_mcp.y
-
-def detect_fist(landmarks):
-    thumb_tip = landmarks[mp_hands.HandLandmark.THUMB_TIP]
-    thumb_mcp = landmarks[mp_hands.HandLandmark.THUMB_MCP]
     index_tip = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-    index_mcp = landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP]
+    return thumb_tip.y < index_tip.y and abs(thumb_tip.x - index_tip.x) < 0.05  # Ensure thumb is above index finger with slight x-axis tolerance
+
+def detect_hand_closing(landmarks):
+    wrist = landmarks[mp_hands.HandLandmark.WRIST]
+    fingers_closed_count = 0
+
+    # Check if all fingers are pointing down
+    fingertip_landmarks = [
+        mp_hands.HandLandmark.THUMB_TIP,
+        mp_hands.HandLandmark.INDEX_FINGER_TIP,
+        mp_hands.HandLandmark.MIDDLE_FINGER_TIP,
+        mp_hands.HandLandmark.RING_FINGER_TIP,
+        mp_hands.HandLandmark.PINKY_TIP
+    ]
     
-    # All fingers should be curled in a fist gesture
-    return thumb_tip.y > thumb_mcp.y and index_tip.y > index_mcp.y
+    for fingertip in fingertip_landmarks:
+        if landmarks[fingertip].y > wrist.y:  # Check if any fingertip is below the wrist
+            fingers_closed_count += 1
+
+    # Consider it a "closing" gesture if at least 3 fingers are below the wrist
+    return fingers_closed_count >= 3
 
 # Start recording in a separate thread
 def start_recording():
@@ -79,8 +90,9 @@ def handle_recording(frame):
             # Detect gestures and toggle recording
             if detect_thumbs_up(hand_landmarks.landmark) and not is_recording:
                 start_recording()
-            elif detect_fist(hand_landmarks.landmark) and is_recording:
+            elif detect_hand_closing(hand_landmarks.landmark) and is_recording:
                 stop_recording()
+                return True  # Indicate that the recording has stopped
 
 # Start video capture for gesture detection
 cap = cv2.VideoCapture(0)
@@ -91,7 +103,8 @@ while True:
         print("Failed to capture video frame.")
         break
 
-    handle_recording(frame)  # Check for gestures and update recording status
+    if handle_recording(frame):  # Check for gestures and update recording status
+        break  # Exit loop if recording has been stopped
 
     # Show the webcam feed with gesture detection and recording status
     cv2.imshow("Gesture Detection (Press 'q' to quit)", frame)
