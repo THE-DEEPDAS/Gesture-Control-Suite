@@ -3,7 +3,7 @@
 # Screen Recording with Gesture Control
 # Save Screenshot in Multiple Formats
 # Smart Cropping
-# Automatic Upload to Cloud Storage
+# Automatic Upload to Cloud Storage using google-api-python-api
 # Gesture-Driven Timer Settings for Delayed Screenshots
 # Image Filtering and Enhancement
 # Automated Text Extraction and Sharing (OCR)
