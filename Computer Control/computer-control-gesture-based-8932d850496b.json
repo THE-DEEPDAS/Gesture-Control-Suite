@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "computer-control-gesture-based",
+  "private_key_id": "8932d850496bbcd2554f5df5e1e35683571a4242",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQC+j3xNgofgO02K\nPqpLkTd8znNPArynIDPVHNFbW4Dimoga3LpWzhWaderFdRthARFtE52A0rueAH8G\nbXbazl5W4t3GDCMEOZgS7ESst3JyMANMxim4b0HAOVBuloH267QK2cEdQ0Lj30NL\n6AKczuMpEVeBjc/XZL3T75ptP+/5pGPzG48gZtTe4M1EXh4IyEF7SVDd9Ss+dguc\n2xytfmGHM7N7sJl613QA/ELWJuEJKwxaLzAASH82MEH37w/P15iGeZIZM7d0CHbk\nMW/QeXMBXNqsQfmx4N4CKCIcdjXWY29rDnoUAgmZm6M/vx+oy8VTpBXvw+mccLE6\n+0HR5ji9AgMBAAECggEAIPUyj7pLc0v2a3pOnD67rM2NEmV8COCwLkPrbqRLDIYj\nE5hI7yH6CQqrZebM6zBS2f1qQIFR+zAFSDCO/aVzGg5nQm1Pchfe9ijgcMnSlK66\np2DfjttJMSyIfXPw+uqFq1nBhWTgcQZofnycVRAQKEZsTsce4xc0oK7gU9Ra1h9c\nPHLGUutUexqx1z4fwTikRYoQaLXjZeVimVEXgUdwtlx06j9tztFQUdTHUkEffGhG\nG+8Ob0Jtu2Zc0Pvh6dbv4OkWL4Q0hVIK1dunQOKVXYUdgsnjpbNy1Ak2qbnFiO4X\nNpCFH3dGHi9Mq0wSKgFhlWrAxBmY7j0uFu3EgeracQKBgQD6YIzT3qHL4ZPkQZ+r\n+R9PgKo7Kw6HSUdXbFFzcWaJJHyz8XtTpZwwVMrgpnaLk/1nR70sGY5kSCyMVPnA\nrp+P2K3DEYiGuzLqwlG1TJqHNMVBQ+75lnmxf1uP7UdNGRUxgN+lqywBB15gRKZg\nlmOqPYroppwaLbPhh0Gxy8IIDQKBgQDC1wq7A/BJ1tybAIrqv/PlJAejssrnMwsK\npz4LIlXxrKlLPdbL98AkfAtS3ICZim/E1XA9VxNXIR+GMwmSDn5JWwyzOCaYnrZ0\nfkhL6GhkkRMM5+T/5tg4BjHHBMN/klQSQPCEmrIZI3oGfUGx0XSk88Wvj85Gfsmh\n5ur8j0WXcQKBgQCvENNnUUPQSuodr8T1ejtqW4yr0m9WKOa5OgO5tJD9U4XeS/rv\ngdyz7pXsfnhlIBUPIhoju7rUY6LCfKglEfR/oAHfY2MS0dHIVBbNrcJex4clG1r9\nKTnt4h8jg8VXIzKuam32aLlb/sr+hQHQh1cosd9uzRBZPZuJFgnZR59kAQKBgQCI\nXI5DAueqFflBdijDUOJ2TTgXhmthUiT5KMFQc5Bo2umFIltxVwyfvD0EmhRa4TuG\nK8co9wcvJJx2hMO+9+vElTeXOsYwbGvPrg4VKivdrncBwk5QFxTeaN9vpVLZtuSl\n/dMXS1k4JM8jOYi/1ZLoWz/QtjmsttGRQRbW+cK/0QKBgQDp3+xzoYBW4sXt6bpx\n4sK7b52Ugkbkkq/JTwzLge7TarS9v92wO5pkuaCBMTXeOS+OWcLBaLtmSDc2b8Wf\nBhcjcIdLHtsQMiWeMDKkLvHmVqi9fWi9HecZSRChGTSt1wJ6LztDPKwKLRptlD30\nbX4okPhIy2S1LQZCN+8YZ2Tvmg==\n-----END PRIVATE KEY-----\n",
+  "client_email": "gesture-based-computer-control@computer-control-gesture-based.iam.gserviceaccount.com",
+  "client_id": "115694968597241114595",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/gesture-based-computer-control%40computer-control-gesture-based.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
