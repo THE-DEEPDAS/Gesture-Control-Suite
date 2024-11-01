@@ -3,6 +3,14 @@
 
 This project leverages hand gestures to control various computer functionalities, including screen recording, screenshot capturing, photo taking, and text extraction from the webcam feed. The system uses gesture recognition to simplify common actions, providing an innovative way to interact with a computer.
 
+## Sample Video
+
+[View Sample Videos on Google Drive](https://drive.google.com/file/d/1DQ9ijfiHRqt2zZ-WuV6Y0ADbh-HOl4uW/view)
+<video width="600" controls autoplay loop>
+  <source src="https://drive.google.com/file/d/1DQ9ijfiHRqt2zZ-WuV6Y0ADbh-HOl4uW/view" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
 ## Project Features
 
 ### 1. Screen Recording

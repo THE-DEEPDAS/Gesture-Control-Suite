@@ -1,5 +1,3 @@
-# This is the file with all the submodules combined just test-extractor is not included as it is
-# work under progress, note: you can access the code of each feature separately also using the submodules
 import cv2
 import numpy as np
 import time
@@ -8,12 +6,11 @@ from datetime import datetime
 import mediapipe as mp
 import threading
 from mss import mss
-import sys
 from enum import Enum
 
 class CaptureMode(Enum):
     FACE_CAPTURE = 1
-    HAND_GESTURE_PHOTO = 2
+    HAND_GESTURE_SCREENSHOT = 2
     SCREEN_RECORDING = 3
 
 class IntegratedCapture:
@@ -21,7 +18,6 @@ class IntegratedCapture:
         # Initialize MediaPipe
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.7)
-        self.mp_draw = mp.solutions.drawing_utils
         
         # Initialize face detection
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -54,15 +50,10 @@ class IntegratedCapture:
             cap.release()
             return
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+        # Enhance the brightness of the entire frame
+        frame = cv2.convertScaleAbs(frame, alpha=1.5, beta=30)
 
-        for (x, y, w, h) in faces:
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
-            face_region = frame[y:y + h, x:x + w]
-            face_region = cv2.convertScaleAbs(face_region, alpha=1.5, beta=30)
-            frame[y:y + h, x:x + w] = face_region
-
+        # Save the enhanced frame without drawing rectangles
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = os.path.join(self.photo_dir, f'captured_photo_{timestamp}.jpg')
         cv2.imwrite(filename, frame)
@@ -70,6 +61,7 @@ class IntegratedCapture:
         cap.release()
 
     def detect_finger_count(self, landmarks):
+        # Detect fingers that are raised by comparing landmarks
         fingers = [landmarks[i].y < landmarks[i - 2].y for i in [
             self.mp_hands.HandLandmark.INDEX_FINGER_TIP,
             self.mp_hands.HandLandmark.MIDDLE_FINGER_TIP,
@@ -78,7 +70,7 @@ class IntegratedCapture:
         ]]
         return fingers.count(True)
 
-    def capture_gesture_photo(self):
+    def capture_gesture_screenshot(self):
         cap = cv2.VideoCapture(0)
         
         while True:
@@ -94,17 +86,25 @@ class IntegratedCapture:
                 total_fingers = 0
                 for hand_landmarks in results.multi_hand_landmarks:
                     total_fingers += self.detect_finger_count(hand_landmarks.landmark)
-                    self.mp_draw.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
                 
                 if total_fingers > 0:
+                    # Close OpenCV capture window and start countdown
+                    cap.release()
+                    cv2.destroyAllWindows()
+
+                    # Start countdown in the console
                     timer_seconds = min(total_fingers, 10)
-                    print(f"Waiting {timer_seconds} seconds before taking photo...")
+                    print(f"Starting timer for {timer_seconds} seconds before taking screenshot...")
                     time.sleep(timer_seconds)
                     
-                    screenshot_name = os.path.join(self.gesture_dir, f"gesture_photo_{int(time.time())}.jpg")
-                    cv2.imwrite(screenshot_name, frame)
-                    print(f"Photo taken and saved as {screenshot_name}")
-                    break
+                    # Take screenshot after countdown
+                    with mss() as sct:
+                        screenshot = sct.grab(sct.monitors[1])
+                        img = np.array(screenshot)
+                        screenshot_name = os.path.join(self.gesture_dir, f"gesture_screenshot_{int(time.time())}.jpg")
+                        cv2.imwrite(screenshot_name, img)
+                        print(f"Screenshot taken and saved as {screenshot_name}")
+                    return  # Exit after screenshot
 
             cv2.imshow("Gesture Detection", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -126,27 +126,6 @@ class IntegratedCapture:
             out.write(frame)
 
         out.release()
-
-    def detect_thumbs_up(self, landmarks):
-        thumb_tip = landmarks[self.mp_hands.HandLandmark.THUMB_TIP]
-        index_tip = landmarks[self.mp_hands.HandLandmark.INDEX_FINGER_TIP]
-        return thumb_tip.y < index_tip.y and abs(thumb_tip.x - index_tip.x) < 0.05
-
-    def detect_hand_closing(self, landmarks):
-        wrist = landmarks[self.mp_hands.HandLandmark.WRIST]
-        fingers_closed_count = 0
-        fingertip_landmarks = [
-            self.mp_hands.HandLandmark.THUMB_TIP,
-            self.mp_hands.HandLandmark.INDEX_FINGER_TIP,
-            self.mp_hands.HandLandmark.MIDDLE_FINGER_TIP,
-            self.mp_hands.HandLandmark.RING_FINGER_TIP,
-            self.mp_hands.HandLandmark.PINKY_TIP
-        ]
-        
-        for fingertip in fingertip_landmarks:
-            if landmarks[fingertip].y > wrist.y:
-                fingers_closed_count += 1
-        return fingers_closed_count >= 3
 
     def start_recording(self):
         if not self.is_recording:
@@ -197,22 +176,20 @@ def main():
     
     while True:
         print("\nChoose capture mode:")
-        print("1. Gesture Based Photo")
-        print("2. Gesture based Screenshot")
-        print("3. Text-Extractor")
-        print("4. Screen Recording")
-        print("5. Exit")
-        
+        print("1. Face Capture with Brightened Image")
+        print("2. Gesture Based Screenshot with Countdown")
+        print("3. Screen Recording")
+        print("4. Exit")
         
         try:
             choice = int(input("Enter your choice (1-4): "))
             if choice == 1:
                 capture.capture_face_photo()
             elif choice == 2:
-                capture.capture_gesture_photo()
-            elif choice == 4:
+                capture.capture_gesture_screenshot()
+            elif choice == 3:
                 capture.screen_recording_mode()
-            elif choice == 5:
+            elif choice == 4:
                 break
             else:
                 print("Invalid choice. Please try again.")
