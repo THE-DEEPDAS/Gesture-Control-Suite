@@ -1,200 +1,193 @@
 import cv2
-import numpy as np
-import time
-import os
-from datetime import datetime
 import mediapipe as mp
-import threading
-from mss import mss
-from enum import Enum
+import numpy as np
+import pyautogui
+import math
+from screeninfo import get_monitors
+import pygame
+from PIL import Image
+import time
 
-class CaptureMode(Enum):
-    FACE_CAPTURE = 1
-    HAND_GESTURE_SCREENSHOT = 2
-    SCREEN_RECORDING = 3
-
-class IntegratedCapture:
+class EnhancedGestureController:
     def __init__(self):
+        # Initialize camera
+        self.cap = cv2.VideoCapture(0)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        
         # Initialize MediaPipe
         self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.7)
+        self.hands = self.mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=1,
+            min_detection_confidence=0.8,
+            min_tracking_confidence=0.8
+        )
+        self.mp_draw = mp.solutions.drawing_utils
         
-        # Initialize face detection
-        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        # Screen settings
+        monitor = get_monitors()[0]
+        self.screen_width = monitor.width
+        self.screen_height = monitor.height
         
-        # Create output directories
-        self.photo_dir = 'captured_pics'
-        self.gesture_dir = 'CapturedImages'
-        self.video_dir = 'CapturedVideos'
-        for directory in [self.photo_dir, self.gesture_dir, self.video_dir]:
-            os.makedirs(directory, exist_ok=True)
+        # Custom pointer settings
+        pygame.init()
+        self.pointer_size = 32
+        self.create_custom_pointer()
         
-        # Recording state
-        self.is_recording = False
-        self.recording_thread = None
-
-    def capture_face_photo(self):
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            print("Error: Could not open camera.")
-            return
-
-        print("Preparing to take a photo in 3 seconds...")
-        for i in range(3, 0, -1):
-            print(f"Timer: {i} seconds")
-            time.sleep(1)
-
-        ret, frame = cap.read()
-        if not ret:
-            print("Error: Could not read frame.")
-            cap.release()
-            return
-
-        # Enhance the brightness of the entire frame
-        frame = cv2.convertScaleAbs(frame, alpha=1.5, beta=30)
-
-        # Save the enhanced frame without drawing rectangles
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = os.path.join(self.photo_dir, f'captured_photo_{timestamp}.jpg')
-        cv2.imwrite(filename, frame)
-        print(f"Photo captured and saved as: {filename}")
-        cap.release()
-
-    def detect_finger_count(self, landmarks):
-        # Detect fingers that are raised by comparing landmarks
-        fingers = [landmarks[i].y < landmarks[i - 2].y for i in [
-            self.mp_hands.HandLandmark.INDEX_FINGER_TIP,
-            self.mp_hands.HandLandmark.MIDDLE_FINGER_TIP,
-            self.mp_hands.HandLandmark.RING_FINGER_TIP,
-            self.mp_hands.HandLandmark.PINKY_TIP
-        ]]
-        return fingers.count(True)
-
-    def capture_gesture_screenshot(self):
-        cap = cv2.VideoCapture(0)
+        # Gesture tracking variables
+        self.prev_hand_landmarks = None
+        self.smoothing_factor = 0.5
+        self.last_position = (0, 0)
+        self.pinch_threshold = 0.06
+        self.click_cooldown = 0.5
+        self.last_click_time = 0
+        self.pinch_start_dist = None
+        self.zoom_cooldown = 0.3
+        self.last_zoom_time = 0
         
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("Failed to capture video frame.")
-                break
+        # Initialize pyautogui settings
+        pyautogui.FAILSAFE = False
+        pyautogui.MINIMUM_DURATION = 0
+        pyautogui.PAUSE = 0
 
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = self.hands.process(rgb_frame)
+    def create_custom_pointer(self):
+        """Create a custom pointer image"""
+        pointer_surface = pygame.Surface((self.pointer_size, self.pointer_size), pygame.SRCALPHA)
+        
+        # Draw outer circle
+        pygame.draw.circle(pointer_surface, (0, 153, 255, 200), 
+                         (self.pointer_size//2, self.pointer_size//2), 
+                         self.pointer_size//2)
+        
+        # Draw inner circle
+        pygame.draw.circle(pointer_surface, (255, 255, 255, 255),
+                         (self.pointer_size//2, self.pointer_size//2),
+                         self.pointer_size//4)
+        
+        # Convert to PIL image and save
+        pygame_string = pygame.image.tostring(pointer_surface, 'RGBA')
+        self.pointer = Image.frombytes('RGBA', (self.pointer_size, self.pointer_size), pygame_string)
+
+    def smooth_position(self, new_pos):
+        """Apply smoothing to cursor movement"""
+        if self.last_position == (0, 0):
+            return new_pos
+        
+        x = int(self.last_position[0] * (1 - self.smoothing_factor) + 
+                new_pos[0] * self.smoothing_factor)
+        y = int(self.last_position[1] * (1 - self.smoothing_factor) + 
+                new_pos[1] * self.smoothing_factor)
+        
+        self.last_position = (x, y)
+        return (x, y)
+
+    def get_finger_state(self, hand_landmarks):
+        """Get the state of index finger and thumb"""
+        index_tip = hand_landmarks.landmark[8]
+        index_pip = hand_landmarks.landmark[6]
+        thumb_tip = hand_landmarks.landmark[4]
+        thumb_ip = hand_landmarks.landmark[3]
+        
+        # Check if index finger is extended
+        index_extended = index_tip.y < index_pip.y
+        
+        # Calculate pinch distance
+        pinch_distance = math.sqrt(
+            (thumb_tip.x - index_tip.x)**2 + 
+            (thumb_tip.y - index_tip.y)**2
+        )
+        
+        return index_extended, pinch_distance
+
+    def handle_gestures(self, hand_landmarks):
+        """Process detected hand gestures"""
+        index_tip = hand_landmarks.landmark[8]
+        current_time = time.time()
+        
+        # Convert hand position to screen coordinates
+        screen_x = int(np.interp(index_tip.x, [0.0, 1.0], [0, self.screen_width]))
+        screen_y = int(np.interp(index_tip.y, [0.0, 1.0], [0, self.screen_height]))
+        
+        # Apply smoothing
+        screen_x, screen_y = self.smooth_position((screen_x, screen_y))
+        
+        # Move cursor
+        pyautogui.moveTo(screen_x, screen_y, duration=0)
+        
+        # Get finger state
+        index_extended, pinch_distance = self.get_finger_state(hand_landmarks)
+        
+        # Handle tap gesture (extended index finger)
+        if index_extended and current_time - self.last_click_time > self.click_cooldown:
+            if pinch_distance > self.pinch_threshold:  # Ensure not pinching
+                pyautogui.click()
+                self.last_click_time = current_time
+        
+        # Handle zoom gesture (pinch)
+        if self.pinch_start_dist is None:
+            self.pinch_start_dist = pinch_distance
+        elif current_time - self.last_zoom_time > self.zoom_cooldown:
+            zoom_factor = self.pinch_start_dist / pinch_distance
             
-            if results.multi_hand_landmarks:
-                total_fingers = 0
-                for hand_landmarks in results.multi_hand_landmarks:
-                    total_fingers += self.detect_finger_count(hand_landmarks.landmark)
-                
-                if total_fingers > 0:
-                    # Close OpenCV capture window and start countdown
-                    cap.release()
-                    cv2.destroyAllWindows()
+            if abs(zoom_factor - 1.0) > 0.2:  # Threshold for zoom activation
+                if zoom_factor > 1.0:
+                    pyautogui.hotkey('ctrl', '+')
+                else:
+                    pyautogui.hotkey('ctrl', '-')
+                self.last_zoom_time = current_time
+                self.pinch_start_dist = pinch_distance
 
-                    # Start countdown in the console
-                    timer_seconds = min(total_fingers, 10)
-                    print(f"Starting timer for {timer_seconds} seconds before taking screenshot...")
-                    time.sleep(timer_seconds)
-                    
-                    # Take screenshot after countdown
-                    with mss() as sct:
-                        screenshot = sct.grab(sct.monitors[1])
-                        img = np.array(screenshot)
-                        screenshot_name = os.path.join(self.gesture_dir, f"gesture_screenshot_{int(time.time())}.jpg")
-                        cv2.imwrite(screenshot_name, img)
-                        print(f"Screenshot taken and saved as {screenshot_name}")
-                    return  # Exit after screenshot
-
-            cv2.imshow("Gesture Detection", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-        cap.release()
-        cv2.destroyAllWindows()
-
-    def record_screen(self, file_name):
-        sct = mss()
-        screen_size = (1920, 1080)
-        fourcc = cv2.VideoWriter_fourcc(*"XVID")
-        out = cv2.VideoWriter(file_name, fourcc, 20.0, screen_size)
-
-        while self.is_recording:
-            screenshot = sct.grab(sct.monitors[1])
-            img = np.array(screenshot)
-            frame = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-            out.write(frame)
-
-        out.release()
-
-    def start_recording(self):
-        if not self.is_recording:
-            self.is_recording = True
-            file_name = os.path.join(self.video_dir, f"recording_{int(time.time())}.avi")
-            print(f"Recording started: {file_name}")
-            self.recording_thread = threading.Thread(target=self.record_screen, args=(file_name,))
-            self.recording_thread.start()
-
-    def stop_recording(self):
-        if self.is_recording:
-            self.is_recording = False
-            if self.recording_thread:
-                self.recording_thread.join()
-            print("Recording stopped and saved.")
-
-    def screen_recording_mode(self):
-        cap = cv2.VideoCapture(0)
-
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("Failed to capture video frame.")
-                break
-
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = self.hands.process(rgb_frame)
-
-            if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    if self.detect_thumbs_up(hand_landmarks.landmark) and not self.is_recording:
-                        self.start_recording()
-                    elif self.detect_hand_closing(hand_landmarks.landmark) and self.is_recording:
-                        self.stop_recording()
-                        return
-
-            cv2.imshow("Gesture Detection (Press 'q' to quit)", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                if self.is_recording:
-                    self.stop_recording()
-                break
-
-        cap.release()
-        cv2.destroyAllWindows()
-
-def main():
-    capture = IntegratedCapture()
-    
-    while True:
-        print("\nChoose capture mode:")
-        print("1. Face Capture with Brightened Image")
-        print("2. Gesture Based Screenshot with Countdown")
-        print("3. Screen Recording")
-        print("4. Exit")
+    def process_frame(self, frame):
+        """Process each frame for hand detection and gesture recognition"""
+        frame = cv2.flip(frame, 1)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self.hands.process(rgb_frame)
         
+        if results.multi_hand_landmarks:
+            hand_landmarks = results.multi_hand_landmarks[0]
+            
+            # Draw hand landmarks for visual feedback
+            self.mp_draw.draw_landmarks(
+                frame, 
+                hand_landmarks, 
+                self.mp_hands.HAND_CONNECTIONS,
+                self.mp_draw.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
+                self.mp_draw.DrawingSpec(color=(0, 0, 255), thickness=2)
+            )
+            
+            # Process gestures
+            self.handle_gestures(hand_landmarks)
+            
+        return frame
+
+    def run(self):
+        """Main loop for the gesture controller"""
         try:
-            choice = int(input("Enter your choice (1-4): "))
-            if choice == 1:
-                capture.capture_face_photo()
-            elif choice == 2:
-                capture.capture_gesture_screenshot()
-            elif choice == 3:
-                capture.screen_recording_mode()
-            elif choice == 4:
-                break
-            else:
-                print("Invalid choice. Please try again.")
-        except ValueError:
-            print("Invalid input. Please enter a number between 1 and 4.")
+            while True:
+                ret, frame = self.cap.read()
+                if not ret:
+                    break
+                
+                # Process the frame
+                processed_frame = self.process_frame(frame)
+                
+                # Display the frame
+                cv2.imshow('Enhanced Gesture Control (Press Q to quit)', processed_frame)
+                
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+                
+        finally:
+            self.cleanup()
+
+    def cleanup(self):
+        """Clean up resources"""
+        self.cap.release()
+        cv2.destroyAllWindows()
+        pygame.quit()
 
 if __name__ == "__main__":
-    main()
+    # Set up the controller and run
+    controller = EnhancedGestureController()
+    controller.run()
