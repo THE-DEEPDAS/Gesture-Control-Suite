@@ -23,6 +23,7 @@ class GestureMouseController:
         
         # Initialize state variables
         self.prev_x = self.prev_y = None
+        self.prev_index_y = None  # Initialize prev_index_y here
         self.last_click_time = 0
         self.click_cooldown = 0.3  # seconds
         
@@ -164,7 +165,12 @@ class GestureMouseController:
 
     def run(self):
         cap = cv2.VideoCapture(0)
-        
+
+        last_click_time = 0
+        click_cooldown = 0.5  # Cooldown to avoid multiple clicks
+        tap_threshold_y = 0.05  # Threshold for downward movement
+        stable_threshold = 0.02  # Threshold for stabilization after tap
+
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -183,36 +189,65 @@ class GestureMouseController:
                 
                 # Refined gesture detection
                 if not any(fingers[1:]):  # Fist gesture
-                    self.prev_x = self.prev_y = None
-                    self.prev_scroll_y = None
-                    self.scroll_buffer.clear()
+                    self.prev_index_y = None
                     continue
                 
                 # Hovering and Clicking Mode
-                if fingers[1] and not fingers[2]:
-                    self.scroll_buffer.clear()
-                    self.handle_mouse_movement(hand_landmarks, frame.shape)
+                if fingers[1] and not fingers[2]:  # Only index finger is up
+                    index_tip = hand_landmarks.landmark[8]
+                    current_time = time.time()
+
+                    # Check for tap gesture
+                    if self.prev_index_y is not None:
+                        # Check if index finger has moved downward significantly
+                        if index_tip.y > self.prev_index_y + tap_threshold_y:
+                            # Wait for stabilization after downward movement
+                            stable_position = index_tip.y
+                            stable_time = time.time()
+
+                            # Check if index finger stabilizes at a new position
+                            while True:
+                                ret, frame = cap.read()
+                                if not ret:
+                                    break
+                                
+                                frame = cv2.flip(frame, 1)
+                                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                                results = self.hands.process(frame_rgb)
+                                
+                                if results.multi_hand_landmarks:
+                                    hand_landmarks = results.multi_hand_landmarks[0]
+                                    self.mp_draw.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+                                    
+                                    index_tip = hand_landmarks.landmark[8]
+                                    
+                                    # Check if index finger remains stable within the threshold
+                                    if abs(index_tip.y - stable_position) < stable_threshold:
+                                        # Perform click at the original position
+                                        if (current_time - last_click_time) > click_cooldown:
+                                            pyautogui.click()  # Click action
+                                            last_click_time = current_time
+                                        break
+                                cv2.imshow('Gesture Mouse Control', frame)
+                                if cv2.waitKey(1) & 0xFF == ord('q'):
+                                    break
+                            continue
+
+                    self.prev_index_y = index_tip.y  # Update previous index y-coordinate
                     
-                    if self.check_pinch(hand_landmarks):
-                        pyautogui.click()
-                
+                    self.handle_mouse_movement(hand_landmarks, frame.shape)
+
                 # Scrolling Mode
-                elif fingers[1] and fingers[2] and not fingers[3] and not fingers[4]:
-                    self.prev_x = self.prev_y = None
+                elif fingers[1] and fingers[2]:  # Index and middle fingers are up
                     self.handle_scrolling(hand_landmarks, frame.shape)
-            
+                    
             cv2.imshow('Gesture Mouse Control', frame)
-            
-            if cv2.waitKey(1) & 0xFF == 27:
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-                
+
         cap.release()
         cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    pyautogui.MINIMUM_DURATION = 0
-    pyautogui.MINIMUM_SLEEP = 0
-    pyautogui.PAUSE = 0
-    
     controller = GestureMouseController()
     controller.run()
