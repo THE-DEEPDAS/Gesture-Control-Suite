@@ -167,9 +167,9 @@ class GestureMouseController:
         cap = cv2.VideoCapture(0)
 
         last_click_time = 0
-        click_cooldown = 0.5  # Cooldown to avoid multiple clicks
-        tap_threshold_y = 0.05  # Threshold for downward movement
-        stable_threshold = 0.02  # Threshold for stabilization after tap
+        click_cooldown = 0.3  # Reduced cooldown for faster response
+        tap_threshold_y = 0.02  # Decreased threshold for downward movement
+        stable_threshold = 0.01  # Decreased stabilization threshold
 
         while True:
             ret, frame = cap.read()
@@ -225,9 +225,9 @@ class GestureMouseController:
                                     if abs(index_tip.y - stable_position) < stable_threshold:
                                         # Perform click at the original position
                                         if (current_time - last_click_time) > click_cooldown:
-                                            pyautogui.click()  # Click action
-                                            last_click_time = current_time
-                                        break
+                                            pyautogui.click()  # Click at the location
+                                            last_click_time = current_time  # Update last click time
+                                        break  # Exit stabilization loop
                                 cv2.imshow('Gesture Mouse Control', frame)
                                 if cv2.waitKey(1) & 0xFF == ord('q'):
                                     break
@@ -247,6 +247,7 @@ class GestureMouseController:
 
         cap.release()
         cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     controller = GestureMouseController()
