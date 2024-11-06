@@ -1,210 +1,303 @@
 import cv2
-import numpy as np
+import mediapipe as mp
 import pygame
 import time
-from datetime import datetime, timedelta
-import mediapipe as mp
+import ctypes  # For window control
 
-class PomodoroTimer:
-    def __init__(self):
-        # Initialize times for different modes (in seconds che aa)
-        self.WORK_TIME = 25
-        self.SHORT_BREAK = 5
-        self.LONG_BREAK = 15
+# Initialize MediaPipe hands and Pygame for audio
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.8)
+mp_drawing = mp.solutions.drawing_utils
+
+pygame.mixer.init()
+background_sound = pygame.mixer.Sound('./bg_sound.wav')  
+sound_on = False
+
+# Timer setup
+MODES = ["Work", "Short Break", "Long Break"]
+mode_durations = {"Work": 25 * 60 * 60, "Short Break": 5 * 60 * 60, "Long Break": 15 * 60 * 60}  
+current_mode = 0
+timer_running = False
+focus_mode = False
+time_left = mode_durations[MODES[current_mode]]
+cooldown_time = 1.5
+last_action_time = 0
+window_open = True
+
+# Utility Functions for Window Control
+def minimize_window():
+    ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 6)
+
+def restore_window():
+    ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 9)
+
+# Timer Control Functions
+def start_timer():
+    global timer_running, time_left
+    timer_running = True
+    time_left = mode_durations[MODES[current_mode]]
+    print(f"Timer started for {MODES[current_mode]}: {time_left // 60} minutes")
+
+def stop_timer():
+    global timer_running, time_left
+    timer_running = False
+    time_left = mode_durations[MODES[current_mode]]
+    print("Timer stopped.")
+
+def toggle_background_sound():
+    global sound_on
+    sound_on = not sound_on
+    if sound_on:
+        background_sound.play(loops=-1)
+        print("Sound ON")
+    else:
+        background_sound.stop()
+        print("Sound OFF")
+
+# Function to handle updating the countdown timer
+def update_timer():
+    global time_left, timer_running, current_mode
+    
+    if timer_running:
+        time_left -= 1
+        if time_left <= 0:
+            timer_running = False
+            current_mode = (current_mode + 1) % len(MODES)  # Switch to next mode
+            time_left = mode_durations[MODES[current_mode]]
+            print(f"Mode switched to {MODES[current_mode]}")
+            pygame.mixer.Sound.play(pygame.mixer.Sound('./alarm.wav'))  # Sound for timer end
+
+# Functions to control the OpenCV window based on focus mode
+def close_timer_window():
+    global window_open
+    window_open = False
+    cv2.destroyAllWindows()
+
+def open_timer_window():
+    global window_open
+    window_open = True
+
+# Gesture Detection and Handling
+def handle_gestures(landmarks, num_hands):
+    global timer_running, current_mode, time_left, focus_mode, last_action_time, window_open
+    
+    current_time = time.time()
+    if current_time - last_action_time < cooldown_time:
+        return  # Avoid repeat actions due to cooldown
+
+    if num_hands == 1:
+        # Gesture: Thumbs Up = Start Timer (Single Hand)
+        if is_thumb_up(landmarks[0]) and not timer_running:
+            start_timer()
+            last_action_time = current_time
+        # Gesture: Thumbs Down = Stop Timer (Single Hand)
+        elif is_thumb_down(landmarks[0]) and timer_running:
+            stop_timer()
+            last_action_time = current_time
+        # Gesture: Touch Ear for Background Sound Toggle
+        elif is_touching_ear(landmarks[0]):
+            toggle_background_sound()
+            last_action_time = current_time
+
+    if num_hands == 2:
+        # Gesture: Swipe (Both Hands, Index and Middle Fingers Together Moving to One Side)
+        if is_two_finger_swipe(landmarks): # working respectably fine
+            current_mode = (current_mode + 1) % len(MODES)
+            time_left = mode_durations[MODES[current_mode]]
+            print(f"Switched to {MODES[current_mode]} mode.")
+            last_action_time = current_time
+
+        # Gesture: + Sign with Both Hands = Add Time
+        elif is_plus_sign(landmarks) and timer_running:
+            time_left += 5 * 60
+            print("Added 5 minutes.")
+            last_action_time = current_time
+
+        # Gesture: - Sign with Both Hands = Reduce Time
+        elif is_minus_sign(landmarks) and timer_running and time_left > 5 * 60:
+            time_left -= 5 * 60
+            print("Reduced 5 minutes.")
+            last_action_time = current_time
+
+        # Gesture: Double V Sign = Toggle Focus Mode
+        elif is_double_v_sign(landmarks):
+            focus_mode = not focus_mode
+            if focus_mode:
+                minimize_window()
+                close_timer_window()
+                print("Focus mode ON")
+            else:
+                restore_window()
+                open_timer_window()
+                print("Focus mode OFF")
+            last_action_time = current_time
+
+# Gesture Functions for Recognizing Specific Gestures
+def is_thumb_up(hand_landmarks):  # Keep this one as is - it's already intuitive
+    return hand_landmarks[4].y < hand_landmarks[3].y < hand_landmarks[2].y < hand_landmarks[1].y
+
+def is_thumb_down(hand_landmarks):  # Keep this one as is - it's already intuitive
+    cnt = 0
+    if hand_landmarks[4].y > hand_landmarks[3].y:
+        cnt+=1
+    if hand_landmarks[3].y > hand_landmarks[2].y:
+        cnt+=1
+    if hand_landmarks[2].y > hand_landmarks[1].y:
+        cnt+=1
+    return cnt >= 2
+
+def is_two_finger_swipe(landmarks):
+    """
+    New gesture: Both hands making peace signs (V shape with index and middle fingers)
+    This is more intuitive than just index fingers
+    """
+    if len(landmarks) != 2:
+        return False
+    
+    for hand in landmarks:
+        # Check for peace sign
+        index_up = hand[8].y < hand[6].y  # Index extended
+        middle_up = hand[12].y < hand[10].y  # Middle extended
+        other_fingers_down = (hand[16].y > hand[14].y and  # Ring finger down
+                            hand[20].y > hand[18].y)  # Pinky down
         
-        # Initialize states
-        self.current_mode = "WORK"  # WORK, SHORT_BREAK, LONG_BREAK
-        self.time_remaining = self.WORK_TIME * 60
-        self.is_running = False
-        self.is_muted = False
-        self.focus_mode = False
-        
-        # Initialize pygame for sound
-        pygame.mixer.init()
-        self.background_sound = pygame.mixer.Sound("./bg_sound.wav") 
-        self.background_sound.set_volume(0.3)
-        
-        # Initialize MediaPipe for hand tracking
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
-            max_num_hands=1,
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.7
+        if not (index_up and middle_up and other_fingers_down):
+            return False
+    
+    # Hands should be at similar height
+    hands_aligned = abs(landmarks[0][8].y - landmarks[1][8].y) < 0.1
+    return hands_aligned
+
+def is_plus_sign(landmarks):
+    """
+    New gesture: Both hands with all fingers extended (open palms)
+    Much simpler than specific finger combinations
+    """
+    if len(landmarks) != 2:
+        return False
+    
+    for hand in landmarks:
+        # All fingers should be extended
+        fingers_up = (
+            hand[8].y < hand[6].y and   # Index up
+            hand[12].y < hand[10].y and  # Middle up
+            hand[16].y < hand[14].y and  # Ring up
+            hand[20].y < hand[18].y      # Pinky up
         )
-        self.mp_draw = mp.solutions.drawing_utils
+        if not fingers_up:
+            return False
+    
+    # Hands should be at similar height and proper distance
+    hands_aligned = abs(landmarks[0][8].y - landmarks[1][8].y) < 0.1
+    proper_distance = 0.2 < abs(landmarks[0][8].x - landmarks[1][8].x) < 0.6
+    
+    return hands_aligned and proper_distance
+
+def is_minus_sign(landmarks):
+    """
+    New gesture: Both hands in fists (all fingers closed)
+    Much simpler than specific finger combinations
+    """
+    if len(landmarks) != 2:
+        return False
+    
+    for hand in landmarks:
+        # All fingers should be closed
+        fingers_down = (
+            hand[8].y > hand[6].y and   # Index down
+            hand[12].y > hand[10].y and  # Middle down
+            hand[16].y > hand[14].y and  # Ring down
+            hand[20].y > hand[18].y      # Pinky down
+        )
+        if not fingers_down:
+            return False
+    
+    # Hands should be at similar height and proper distance
+    hands_aligned = abs(landmarks[0][8].y - landmarks[1][8].y) < 0.1
+    proper_distance = 0.2 < abs(landmarks[0][8].x - landmarks[1][8].x) < 0.6
+    
+    return hands_aligned and proper_distance
+
+def is_double_v_sign(landmarks):
+    """
+    New gesture: Both hands showing three fingers (index, middle, ring)
+    More stable than checking for exact V positions
+    """
+    if len(landmarks) != 2:
+        return False
+    
+    for hand in landmarks:
+        three_fingers_up = (
+            hand[8].y < hand[6].y and   # Index up
+            hand[12].y < hand[10].y and  # Middle up
+            hand[16].y < hand[14].y and  # Ring up
+            hand[20].y > hand[18].y      # Pinky down
+        )
+        if not three_fingers_up:
+            return False
+    
+    return True
+
+def is_touching_ear(hand_landmarks):
+    """
+    New gesture: Simple phone gesture with just thumb and pinky extended
+    Removed the height requirement to make it easier to perform
+    """
+    # Check if thumb and pinky are extended
+    thumb_extended = hand_landmarks[4].y < hand_landmarks[2].y
+    pinky_extended = hand_landmarks[20].y < hand_landmarks[18].y
+    
+    # Check if other fingers are closed
+    other_fingers_closed = (
+        hand_landmarks[8].y > hand_landmarks[6].y and   # Index closed
+        hand_landmarks[12].y > hand_landmarks[10].y and # Middle closed
+        hand_landmarks[16].y > hand_landmarks[14].y     # Ring closed
+    )
+    
+    return thumb_extended and pinky_extended and other_fingers_closed
+
+# Main loop for gesture control and timer
+def main():
+    cap = cv2.VideoCapture(0)
+    
+    while cap.isOpened():
+        success, frame = cap.read()
+        if not success:
+            print("Ignoring empty camera frame.")
+            continue
         
-        # Initialize webcam
-        self.cap = cv2.VideoCapture(0)
+        # Flip frame and process it for hand detection
+        frame = cv2.flip(frame, 1)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        result = hands.process(rgb_frame)
         
-    def detect_gesture(self, frame):
-        # Convert BGR to RGB
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.hands.process(frame_rgb)
+        landmarks = []
+        if result.multi_hand_landmarks:
+            for hand_landmarks in result.multi_hand_landmarks:
+                landmarks.append(hand_landmarks.landmark)
+                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
         
-        if results.multi_hand_landmarks:
-            hand_landmarks = results.multi_hand_landmarks[0]
-            
-            # Draw landmarks
-            self.mp_draw.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
-            
-            # Get landmark positions
-            landmarks = []
-            for landmark in hand_landmarks.landmark:
-                h, w, _ = frame.shape
-                x, y = int(landmark.x * w), int(landmark.y * h)
-                landmarks.append((x, y))
-            
-            # Detect gestures
-            self.process_gestures(landmarks)
+        handle_gestures(landmarks, len(landmarks))
         
-        return frame
-    
-    def process_gestures(self, landmarks):
-        # Thumbs up detection (start)
-        if self.detect_thumbs_up(landmarks):
-            self.start_timer()
-            
-        # Thumbs down detection (stop)
-        elif self.detect_thumbs_down(landmarks):
-            self.stop_timer()
-            
-        # Pinch out detection (add time)
-        elif self.detect_pinch_out(landmarks):
-            self.add_time()
-            
-        # Pinch in detection (decrease time)
-        elif self.detect_pinch_in(landmarks):
-            self.decrease_time()
-            
-        # Finger on lips detection (mute/unmute)
-        elif self.detect_finger_on_lips(landmarks):
-            self.toggle_mute()
-            
-        # Focus mode gesture detection
-        elif self.detect_focus_gesture(landmarks):
-            self.toggle_focus_mode()
-    
-    def detect_thumbs_up(self, landmarks):
-        # Implement thumbs up detection logic
-        thumb_tip = landmarks[4]
-        thumb_base = landmarks[2]
-        return thumb_tip[1] < thumb_base[1]
-    
-    def detect_thumbs_down(self, landmarks):
-        # Implement thumbs down detection logic
-        thumb_tip = landmarks[4]
-        thumb_base = landmarks[2]
-        return thumb_tip[1] > thumb_base[1]
-    
-    def detect_pinch_out(self, landmarks):
-        # Implement pinch out detection logic
-        thumb_tip = landmarks[4]
-        index_tip = landmarks[8]
-        distance = np.sqrt((thumb_tip[0] - index_tip[0])**2 + (thumb_tip[1] - index_tip[1])**2)
-        return distance > 100  # Adjust threshold as needed
-    
-    def detect_pinch_in(self, landmarks):
-        # Implement pinch in detection logic
-        thumb_tip = landmarks[4]
-        index_tip = landmarks[8]
-        distance = np.sqrt((thumb_tip[0] - index_tip[0])**2 + (thumb_tip[1] - index_tip[1])**2)
-        return distance < 30  # Adjust threshold as needed
-    
-    def detect_finger_on_lips(self, landmarks):
-        # Implement finger on lips detection logic
-        index_tip = landmarks[8]
-        # Define approximate lip region (adjust as needed)
-        return 0.4 < index_tip[1] / self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT) < 0.6
-    
-    def detect_focus_gesture(self, landmarks):
-        # Implement focus mode gesture detection (pinch with middle and thumb)
-        thumb_tip = landmarks[4]
-        middle_tip = landmarks[12]
-        distance = np.sqrt((thumb_tip[0] - middle_tip[0])**2 + (thumb_tip[1] - middle_tip[1])**2)
-        return distance < 30  # Adjust threshold as needed
-    
-    def start_timer(self):
-        self.is_running = True
-        if not self.is_muted:
-            self.background_sound.play(-1)  # Loop indefinitely
-    
-    def stop_timer(self):
-        self.is_running = False
-        self.background_sound.stop()
-    
-    def add_time(self):
-        self.time_remaining += 5 * 60  # Add 5 minutes
-    
-    def decrease_time(self):
-        self.time_remaining = max(60, self.time_remaining - 5 * 60)  # Subtract 5 minutes, minimum 1 minute
-    
-    def toggle_mute(self):
-        self.is_muted = not self.is_muted
-        if self.is_muted:
-            self.background_sound.stop()
-        elif self.is_running:
-            self.background_sound.play(-1)
-    
-    def toggle_focus_mode(self):
-        self.focus_mode = not self.focus_mode
-    
-    def update_timer(self):
-        if self.is_running:
-            self.time_remaining -= 1
-            if self.time_remaining <= 0:
-                self.switch_mode()
-    
-    def switch_mode(self):
-        if self.current_mode == "WORK":
-            self.current_mode = "SHORT_BREAK"
-            self.time_remaining = self.SHORT_BREAK * 60
-        elif self.current_mode == "SHORT_BREAK":
-            self.current_mode = "WORK"
-            self.time_remaining = self.WORK_TIME * 60
-    
-    def format_time(self):
-        minutes = self.time_remaining // 60
-        seconds = self.time_remaining % 60
-        return f"{minutes:02d}:{seconds:02d}"
-    
-    def run(self):
-        while True:
-            ret, frame = self.cap.read()
-            if not ret:
-                break
-            
-            # Flip frame horizontally for more intuitive interaction
-            frame = cv2.flip(frame, 1)
-            
-            # Detect gestures
-            frame = self.detect_gesture(frame)
-            
-            # Update timer
-            if self.is_running:
-                self.update_timer()
-            
-            # Draw timer and status
-            cv2.putText(frame, f"Mode: {self.current_mode}", (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            cv2.putText(frame, f"Time: {self.format_time()}", (10, 70),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            cv2.putText(frame, f"Status: {'Running' if self.is_running else 'Stopped'}", (10, 110),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            cv2.putText(frame, f"Focus Mode: {'On' if self.focus_mode else 'Off'}", (10, 150),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            
-            # Display frame
+        # Display remaining time on frame
+        mins, secs = divmod(time_left, 60)
+        cv2.putText(frame, f"{MODES[current_mode]}: {mins:02d}:{secs:02d}", (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        
+        # Show the frame with detected hand and timer if window is open
+        if window_open:
             cv2.imshow("Pomodoro Timer", frame)
-            
-            # Break loop on 'q' press
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
         
-        # Cleanup
-        self.cap.release()
-        cv2.destroyAllWindows()
-        pygame.mixer.quit()
+        # Countdown timer
+        update_timer()
+        
+        # Exit loop on pressing 'q'
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+    background_sound.stop()
 
 if __name__ == "__main__":
-    timer = PomodoroTimer()
-    timer.run()
+    main()
