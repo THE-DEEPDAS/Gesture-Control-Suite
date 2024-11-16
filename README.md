@@ -24,7 +24,9 @@ This suite is designed for anyone looking to redefine their interaction with tec
 ### 3. Virtual Keyboard Using Gestures ⌨️
    - **Features**: A gesture-driven virtual keyboard allowing typing on the screen with specific hand movements.
    - **Description**: Provides an alternative input method for typing, using hand gestures to select characters, improving accessibility and enabling users to type without a physical keyboard.
-
+### 4. **Google Meet Panic Button 🚨**  
+   - **Features:** Emotion detection to identify signs of panic, anger, or fear, automatically disabling the camera during stressful situations.  
+   - **Description:** The Panic Button tool detects facial expressions and automatically turns off the camera in Google Meet if negative emotions like panic or fear are detected. It ensures privacy and control during intense virtual meetings, giving users a discreet escape from overwhelming situations.
 ---
 
 ## Project Motivation ✨
