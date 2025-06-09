@@ -87,7 +87,6 @@ class EnhancedGestureController:
         index_tip = hand_landmarks.landmark[8]
         index_pip = hand_landmarks.landmark[6]
         thumb_tip = hand_landmarks.landmark[4]
-        thumb_ip = hand_landmarks.landmark[3]
         
         # Check if index finger is extended
         index_extended = index_tip.y < index_pip.y
