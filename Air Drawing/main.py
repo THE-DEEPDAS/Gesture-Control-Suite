@@ -30,7 +30,7 @@ class AirDraw:
             'purple': (255, 0, 255)
         }
         self.current_color = 'blue'
-        self.brush_thickness = 5 # this you can change according to the requirements
+        self.brush_thickness = 5 
         self.prev_point = None
         
         # for tracking the gestures
@@ -76,6 +76,7 @@ class AirDraw:
         finger_states.append(thumb_tip_x < thumb_base_x)
         
         # checking other fingers using pip (middle knuckle) as reference
+        # 8: index tip, 6: index pip checks if index finger is up
         for tip, pip in [(8,6), (12,10), (16,14), (20,18)]:
             finger_states.append(landmarks[tip].y < landmarks[pip].y)
         
@@ -173,7 +174,8 @@ class AirDraw:
             
             result = cv2.addWeighted(frame, 1, self.canvas, 0.5, 0)
             
-            cv2.putText(result, f"Color: {self.current_color}", (10, 30),
+                                                                #left, top thi ketla pixels chodvana
+            cv2.putText(result, f"Color: {self.current_color}", (10, 30), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             cv2.putText(result, "Index finger: Draw", (10, 60),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
